@@ -14,13 +14,14 @@ namespace ListSerializer
         {
             var json = await SerializeToJson(head);
             var byteArr = Encoding.UTF8.GetBytes(json);
-            
+
             await s.WriteAsync(byteArr.AsMemory(0, byteArr.Length));
-            s.Position = 0;
         }
 
+        //I consider to not dispose stream inside lib -- it looks like side-effect
         public async Task<ListNode> Deserialize(Stream s)
         {
+            s.Seek(0, SeekOrigin.Begin);
             if (s.Length == 0) throw new ArgumentException("Input stream is empty");
             
             var reader = new StreamReader(s);
@@ -36,7 +37,7 @@ namespace ListSerializer
 
             while (oldNode != null)
             {
-                oldToNewMap[oldNode] = new ListNode { Data = oldNode.Data};
+                oldToNewMap[oldNode] = new ListNode {Data = oldNode.Data};
                 oldNode = oldNode.Next;
             }
 
@@ -47,17 +48,17 @@ namespace ListSerializer
                 oldToNewMap[oldNode].Next = oldNode.Next == null ? null : oldToNewMap[oldNode.Next];
                 oldToNewMap[oldNode].Previous = oldNode.Previous == null ? null : oldToNewMap[oldNode.Previous];
                 oldToNewMap[oldNode].Random = oldNode.Random == null ? null : oldToNewMap[oldNode.Random];
-                
+
                 oldNode = oldNode.Next;
             }
 
             return Task.FromResult(oldToNewMap[head]);
         }
-        
+
         internal async Task<string> SerializeToJson(ListNode node)
         {
             if (node == null) return "[]";
-            
+
             var head = node;
 
             var dtos = new List<ListNodeDto>();
@@ -66,7 +67,7 @@ namespace ListSerializer
             int id = 0;
             while (head != null)
             {
-                var nodeDto = new ListNodeDto(id, head.Data); 
+                var nodeDto = new ListNodeDto(id, head.Data);
 
                 dtos.Add(nodeDto);
                 processedNodes.Add(head);
@@ -83,7 +84,7 @@ namespace ListSerializer
                 dtos[id].Next = processedNodes.IndexOf(head.Next);
                 dtos[id].Previous = processedNodes.IndexOf(head.Previous);
                 dtos[id].Random = processedNodes.IndexOf(head.Random);
-                
+
                 id++;
                 head = head.Next;
             }
@@ -112,7 +113,7 @@ namespace ListSerializer
             try
             {
                 var settings = new JsonSerializerSettings {MissingMemberHandling = MissingMemberHandling.Error};
-                var listDto = await Task.Factory.StartNew( () => JsonConvert.DeserializeObject<List<ListNodeDto>>(json, settings));
+                var listDto = await Task.Factory.StartNew(() => JsonConvert.DeserializeObject<List<ListNodeDto>>(json, settings));
                 if (listDto == null || !listDto.Any()) return null;
 
                 var listNodes = new Dictionary<int, ListNode>();
