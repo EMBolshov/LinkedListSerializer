@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using ProtoBuf;
 
 namespace ListSerializer
 {
@@ -12,22 +10,28 @@ namespace ListSerializer
     {
         public async Task Serialize(ListNode head, Stream s)
         {
-            var json = await SerializeToJson(head);
-            var byteArr = Encoding.UTF8.GetBytes(json);
+            if (head == null) return;
 
-            await s.WriteAsync(byteArr.AsMemory(0, byteArr.Length));
+            foreach (var nodeDto in ConvertToProtoModel(head))
+            {
+                var serialized = ProtoSerialize(nodeDto);
+                await s.WriteAsync(serialized.AsMemory(0, serialized.Length));
+            }
+
+            byte[] ProtoSerialize(ListNodeDto node)
+            {
+                using var stream = new MemoryStream();
+                Serializer.SerializeWithLengthPrefix(stream, node, PrefixStyle.Base128, 1);
+                return stream.ToArray();
+            }
         }
 
-        //I consider to not dispose stream inside lib -- it looks like side-effect
-        public async Task<ListNode> Deserialize(Stream s)
+        public Task<ListNode> Deserialize(Stream s)
         {
             s.Seek(0, SeekOrigin.Begin);
             if (s.Length == 0) throw new ArgumentException("Input stream is empty");
-            
-            var reader = new StreamReader(s);
-            var json = await reader.ReadToEndAsync();
 
-            return await DeserializeFromJson(json);
+            return Task.FromResult(DeserializeFromProtobuf(s));
         }
 
         public Task<ListNode> DeepCopy(ListNode head)
@@ -55,14 +59,14 @@ namespace ListSerializer
             return Task.FromResult(oldToNewMap[head]);
         }
 
-        internal async Task<string> SerializeToJson(ListNode node)
+        private IEnumerable<ListNodeDto> ConvertToProtoModel(ListNode node)
         {
-            if (node == null) return "[]";
+            if (node == null) yield return null;
 
             var head = node;
 
             var dtos = new List<ListNodeDto>();
-            var processedNodes = new List<ListNode>();
+            var processedNodes = new Dictionary<ListNode, int>();
 
             int id = 0;
             while (head != null)
@@ -70,7 +74,7 @@ namespace ListSerializer
                 var nodeDto = new ListNodeDto(id, head.Data);
 
                 dtos.Add(nodeDto);
-                processedNodes.Add(head);
+                processedNodes[head] = id;
                 head = head.Next;
                 id++;
             }
@@ -81,65 +85,47 @@ namespace ListSerializer
 
             while (head != null)
             {
-                dtos[id].Next = processedNodes.IndexOf(head.Next);
-                dtos[id].Previous = processedNodes.IndexOf(head.Previous);
-                dtos[id].Random = processedNodes.IndexOf(head.Random);
+                dtos[id].Next = head.Next == null ? -1 : processedNodes[head.Next];
+                dtos[id].Previous = head.Previous == null ? -1 : processedNodes[head.Previous];
+                dtos[id].Random = head.Random == null ? -1 : processedNodes[head.Random];
+
+                yield return dtos[id];
 
                 id++;
                 head = head.Next;
             }
-
-            //you could not utilize 3d party libraries that will serialize the full list for you
-            //var json = JsonSerializer.Serialize(dtos);
-
-            var sb = new StringBuilder();
-            sb.Append('[');
-            foreach (var dto in dtos)
-            {
-                //it's allowed to utilize 3d party libraries for serializing 1 node in particular format
-                sb.Append(await Task.Factory.StartNew(() => JsonConvert.SerializeObject(dto)));
-                sb.Append(',');
-            }
-
-            //Remove trailing comma
-            sb.Length -= 1;
-            sb.Append(']');
-
-            return sb.ToString();
         }
 
-        internal async Task<ListNode> DeserializeFromJson(string json)
+        private ListNode DeserializeFromProtobuf(Stream stream)
         {
+            var listNodes = new Dictionary<int, ListNode>();
+            var listDto = new List<ListNodeDto>();
             try
             {
-                var settings = new JsonSerializerSettings {MissingMemberHandling = MissingMemberHandling.Error};
-                var listDto = await Task.Factory.StartNew(() => JsonConvert.DeserializeObject<List<ListNodeDto>>(json, settings));
-                if (listDto == null || !listDto.Any()) return null;
-
-                var listNodes = new Dictionary<int, ListNode>();
-
-                foreach (var dto in listDto)
+                ListNodeDto nodeDto;
+                while ((nodeDto =
+                    Serializer.DeserializeWithLengthPrefix<ListNodeDto>(stream, PrefixStyle.Base128, 1)) != null)
                 {
-                    var listNode = new ListNode();
-                    listNode.Data = dto.Data;
-                    listNodes[dto.Id] = listNode;
+                    var listNode = new ListNode {Data = nodeDto.Data};
+                    listDto.Add(nodeDto);
+                    listNodes[nodeDto.Id] = listNode;
                 }
-
-                int i = 0;
-                foreach (var dto in listDto)
-                {
-                    listNodes[i].Next = dto.Next == -1 ? null : listNodes[dto.Next];
-                    listNodes[i].Previous = dto.Previous == -1 ? null : listNodes[dto.Previous];
-                    listNodes[i].Random = dto.Random == -1 ? null : listNodes[dto.Random];
-                    i++;
-                }
-
-                return listNodes[0];
             }
-            catch (JsonException ex)
+            catch (Exception ex)
             {
                 throw new ArgumentException("Stream contains invalid data", ex);
             }
+
+            int i = 0;
+            foreach (var dto in listDto)
+            {
+                listNodes[i].Next = dto.Next == -1 ? null : listNodes[dto.Next];
+                listNodes[i].Previous = dto.Previous == -1 ? null : listNodes[dto.Previous];
+                listNodes[i].Random = dto.Random == -1 ? null : listNodes[dto.Random];
+                i++;
+            }
+
+            return listNodes[0];
         }
     }
 }

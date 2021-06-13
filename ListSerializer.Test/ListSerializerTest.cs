@@ -80,16 +80,15 @@ namespace ListSerializer.Test
         }
 
         [TestMethod]
-        public async Task SerializeAndDeserializeNullTest()
+        public async Task SerializeAndDeserializeNullExpectedArgumentException()
         {
             await using var stream = new MemoryStream();
             await Serializer.Serialize(null, stream);
 
-            //result is empty array -- "[]"
-            stream.Length.Should().Be(2);
+            stream.Length.Should().Be(0);
 
-            var deserializedNode = await Serializer.Deserialize(stream);
-            deserializedNode.Should().BeNull();
+            Action action = () => Serializer.Deserialize(stream).GetAwaiter().GetResult();
+            action.Should().Throw<ArgumentException>();
         }
 
         [TestMethod]
@@ -105,23 +104,7 @@ namespace ListSerializer.Test
         {
             await using (var stream = new MemoryStream())
             {
-                var data = "Definitely not JSON";
-                var byteArr = Encoding.UTF8.GetBytes(data);
-
-                await stream.WriteAsync(byteArr.AsMemory(0, byteArr.Length));
-                stream.Position = 0;
-
-                Action action = () => Serializer.Deserialize(stream).GetAwaiter().GetResult();
-                action.Should().Throw<ArgumentException>();
-            }
-        }
-
-        [TestMethod]
-        public async Task DeserializeInvalidStreamWithJsonExpectedArgumentException()
-        {
-            await using (var stream = new MemoryStream())
-            {
-                var data = "[{\"Wrong\":\"Model\"}]";
+                var data = "Definitely not valid stream";
                 var byteArr = Encoding.UTF8.GetBytes(data);
 
                 await stream.WriteAsync(byteArr.AsMemory(0, byteArr.Length));
@@ -135,7 +118,7 @@ namespace ListSerializer.Test
         [TestMethod]
         public async Task TestSerializationAndDeserializationOfHugeList()
         {
-            var input = BuildListFromValues(Enumerable.Range(0, 10000).Select(n => n.ToString()));
+            var input = BuildListFromValues(Enumerable.Range(0, 50000).Select(n => n.ToString()));
 
             await using (var stream = new MemoryStream())
             {
@@ -163,64 +146,6 @@ namespace ListSerializer.Test
                     head = head.Next;
                 }
             }
-        }
-
-        [TestMethod]
-        public async Task TestJsonSerializationWithoutRandomNodes()
-        {
-            var input = LinkNodesInOrder(new[]
-            {
-                new ListNode {Data = "node 1"},
-                new ListNode {Data = "node 2"},
-                new ListNode {Data = "node 3"}
-            });
-
-            var serializer = new ListSerializer();
-            var json = await serializer.SerializeToJson(input);
-
-            json.Should().BeEquivalentTo(
-                "[{\"Id\":0,\"Data\":\"node 1\",\"Next\":1,\"Previous\":-1,\"Random\":-1}," +
-                "{\"Id\":1,\"Data\":\"node 2\",\"Next\":2,\"Previous\":0,\"Random\":-1}," +
-                "{\"Id\":2,\"Data\":\"node 3\",\"Next\":-1,\"Previous\":1,\"Random\":-1}]");
-        }
-
-        [TestMethod]
-        public async Task TestJsonDeserializationWithoutRandomNodes()
-        {
-            var input =
-                "[{\"Id\":0,\"Data\":\"node 1\",\"Next\":1,\"Previous\":-1,\"Random\":-1}," +
-                "{\"Id\":1,\"Data\":\"node 2\",\"Next\":2,\"Previous\":0,\"Random\":-1}," +
-                "{\"Id\":2,\"Data\":\"node 3\",\"Next\":-1,\"Previous\":1,\"Random\":-1}]";
-
-            var serializer = new ListSerializer();
-            var node = await serializer.DeserializeFromJson(input);
-
-            node.Data.Should().Be("node 1");
-            node.Previous.Should().BeNull();
-            node.Next.Data.Should().Be("node 2");
-            node.Next.Previous.Should().Be(node);
-            node.Next.Next.Data.Should().Be("node 3");
-            node.Next.Next.Next.Should().BeNull();
-            node.Next.Next.Previous.Should().Be(node.Next);
-        }
-
-        private static ListNode LinkNodesInOrder(IEnumerable<ListNode> nodes)
-        {
-            var input = nodes.ToList();
-            if (!input.Any()) return null;
-
-            var head = input.First();
-            var prevNode = head;
-
-            foreach (var node in input.Skip(1))
-            {
-                prevNode.Next = node;
-                node.Previous = prevNode;
-
-                prevNode = node;
-            }
-
-            return head;
         }
 
         private static ListNode BuildListFromValues(IEnumerable<string> values)

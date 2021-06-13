@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace ListSerializer
 {
@@ -30,19 +29,21 @@ namespace ListSerializer
         public static void SetRandomLinks(this ListNode node)
         {
             var random = new Random();
-            var nodes = new List<ListNode>();
+            var nodes = new Dictionary<int, ListNode>();
+            var id = 0;
             var head = node;
 
             while (head != null)
             {
-                nodes.Add(head);
+                nodes[id] = head;
+                id++;
                 head = head.Next;
             }
 
             head = node;
             while (head != null)
             {
-                head.Random = nodes.ElementAt(random.Next(0, nodes.Count));
+                head.Random = nodes[random.Next(0, id)];
                 head = head.Next;
             }
         }
