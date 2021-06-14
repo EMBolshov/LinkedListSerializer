@@ -98,7 +98,7 @@ namespace ListSerializer
         private ListNode DeserializeFromProtobuf(Stream stream)
         {
             var listNodes = new Dictionary<int, ListNode>();
-            var listDto = new Dictionary<int, ListNodeDto>();
+            var randomNodeIndexes = new List<int>();
             var id = 0;
             
             try
@@ -108,7 +108,7 @@ namespace ListSerializer
                 while ((nodeDto = Serializer.DeserializeWithLengthPrefix<ListNodeDto>(stream, PrefixStyle.Base128, 1)) != null)
                 {
                     var listNode = new ListNode {Data = nodeDto.Data};
-                    listDto[id] = nodeDto;
+                    randomNodeIndexes.Add(nodeDto.Random);
                     listNodes[id] = listNode;
                     id++;
                 }
@@ -118,9 +118,9 @@ namespace ListSerializer
                 throw new ArgumentException("Stream contains invalid data", ex);
             }
 
-            var lastIndex = listDto.Count - 1;
+            var lastIndex = randomNodeIndexes.Count - 1;
 
-            listNodes[0].Random = listDto[0].Random == -1 ? null : listNodes[listDto[0].Random];
+            listNodes[0].Random = randomNodeIndexes[0] == -1 ? null : listNodes[randomNodeIndexes[0]];
 
             //If there is single node - work is done, just return it
             if (lastIndex == 0) return listNodes[0];
@@ -130,15 +130,15 @@ namespace ListSerializer
 
             for (int i = 1; i < lastIndex; i++)
             {
-                var dto = listDto[i];
+                var randomNodeIndex = randomNodeIndexes[i];
                 listNodes[i].Next = listNodes[i + 1];
                 listNodes[i].Previous = listNodes[i - 1];
-                listNodes[i].Random = dto.Random == -1 ? null : listNodes[dto.Random];
+                listNodes[i].Random = randomNodeIndex == -1 ? null : listNodes[randomNodeIndex];
             }
 
             //Last node has no next
             listNodes[lastIndex].Previous = listNodes[lastIndex - 1];
-            listNodes[lastIndex].Random = listDto[lastIndex].Random == -1 ? null : listNodes[listDto[lastIndex].Random];
+            listNodes[lastIndex].Random = randomNodeIndexes[lastIndex] == -1 ? null : listNodes[randomNodeIndexes[lastIndex]];
 
             return listNodes[0];
         }
