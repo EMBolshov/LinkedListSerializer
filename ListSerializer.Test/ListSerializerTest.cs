@@ -155,9 +155,15 @@ namespace ListSerializer.Test
 
             var list = new ListNode {Data = input.First()};
 
+            var tail = list;
+            
             foreach (var value in input.Skip(1))
             {
-                list.AddAtTail(value);
+                var newNode = new ListNode {Data = value};
+                tail.Next = newNode;
+                newNode.Previous = tail;
+
+                tail = newNode;
             }
 
             list.SetRandomLinks();

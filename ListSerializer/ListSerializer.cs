@@ -71,7 +71,7 @@ namespace ListSerializer
             int id = 0;
             while (head != null)
             {
-                var nodeDto = new ListNodeDto(id, head.Data);
+                var nodeDto = new ListNodeDto(head.Data);
 
                 dtos.Add(nodeDto);
                 processedNodes[head] = id;
@@ -85,8 +85,6 @@ namespace ListSerializer
 
             while (head != null)
             {
-                dtos[id].Next = head.Next == null ? -1 : processedNodes[head.Next];
-                dtos[id].Previous = head.Previous == null ? -1 : processedNodes[head.Previous];
                 dtos[id].Random = head.Random == null ? -1 : processedNodes[head.Random];
 
                 yield return dtos[id];
@@ -96,19 +94,23 @@ namespace ListSerializer
             }
         }
 
+        //Less readable cuz of special first and last node processing, but without comparisons on each iteration  
         private ListNode DeserializeFromProtobuf(Stream stream)
         {
             var listNodes = new Dictionary<int, ListNode>();
-            var listDto = new List<ListNodeDto>();
+            var listDto = new Dictionary<int, ListNodeDto>();
+            var id = 0;
+            
             try
             {
                 ListNodeDto nodeDto;
-                while ((nodeDto =
-                    Serializer.DeserializeWithLengthPrefix<ListNodeDto>(stream, PrefixStyle.Base128, 1)) != null)
+
+                while ((nodeDto = Serializer.DeserializeWithLengthPrefix<ListNodeDto>(stream, PrefixStyle.Base128, 1)) != null)
                 {
                     var listNode = new ListNode {Data = nodeDto.Data};
-                    listDto.Add(nodeDto);
-                    listNodes[nodeDto.Id] = listNode;
+                    listDto[id] = nodeDto;
+                    listNodes[id] = listNode;
+                    id++;
                 }
             }
             catch (Exception ex)
@@ -116,14 +118,27 @@ namespace ListSerializer
                 throw new ArgumentException("Stream contains invalid data", ex);
             }
 
-            int i = 0;
-            foreach (var dto in listDto)
+            var lastIndex = listDto.Count - 1;
+
+            listNodes[0].Random = listDto[0].Random == -1 ? null : listNodes[listDto[0].Random];
+
+            //If there is single node - work is done, just return it
+            if (lastIndex == 0) return listNodes[0];
+            
+            //First node has no previous 
+            listNodes[0].Next = listNodes[1];
+
+            for (int i = 1; i < lastIndex; i++)
             {
-                listNodes[i].Next = dto.Next == -1 ? null : listNodes[dto.Next];
-                listNodes[i].Previous = dto.Previous == -1 ? null : listNodes[dto.Previous];
+                var dto = listDto[i];
+                listNodes[i].Next = listNodes[i + 1];
+                listNodes[i].Previous = listNodes[i - 1];
                 listNodes[i].Random = dto.Random == -1 ? null : listNodes[dto.Random];
-                i++;
             }
+
+            //Last node has no next
+            listNodes[lastIndex].Previous = listNodes[lastIndex - 1];
+            listNodes[lastIndex].Random = listDto[lastIndex].Random == -1 ? null : listNodes[listDto[lastIndex].Random];
 
             return listNodes[0];
         }

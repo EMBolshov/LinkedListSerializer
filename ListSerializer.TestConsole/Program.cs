@@ -33,10 +33,19 @@ namespace ListSerializer.TestConsole
             if (!input.Any()) return null;
 
             var list = new ListNode {Data = input.First()};
-
+            var tail = list;
+            
+            var count = 1;
             foreach (var value in input.Skip(1))
             {
-                list.AddAtTail(value);
+                var newNode = new ListNode {Data = value};
+                tail.Next = newNode;
+                newNode.Previous = tail;
+
+                tail = newNode;
+
+                Console.WriteLine($"Count: {count}");
+                count++;
             }
 
             list.SetRandomLinks();

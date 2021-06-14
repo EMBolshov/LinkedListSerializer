@@ -5,15 +5,6 @@ namespace ListSerializer
 {
     public static class ListNodeExtensions
     {
-        public static void AddAtTail(this ListNode node, string value)
-        {
-            var newNode = new ListNode {Data = value};
-            var tail = node.GetTail();
-            
-            tail.Next = newNode;
-            newNode.Previous = tail;
-        }
-
         public static ListNode GetTail(this ListNode head)
         {
             var tail = head;
