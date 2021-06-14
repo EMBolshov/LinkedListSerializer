@@ -31,7 +31,7 @@ namespace ListSerializer
             s.Seek(0, SeekOrigin.Begin);
             if (s.Length == 0) throw new ArgumentException("Input stream is empty");
 
-            return Task.FromResult(DeserializeFromProtobuf(s));
+            return Task.FromResult(DeserializeWithProtobuf(s));
         }
 
         public Task<ListNode> DeepCopy(ListNode head)
@@ -94,53 +94,43 @@ namespace ListSerializer
             }
         }
 
-        //Less readable cuz of special first and last node processing, but without comparisons on each iteration  
-        private ListNode DeserializeFromProtobuf(Stream stream)
+        private ListNode DeserializeWithProtobuf(Stream stream)
         {
-            var listNodes = new Dictionary<int, ListNode>();
+            var listNodes = new List<ListNode>();
             var randomNodeIndexes = new List<int>();
-            var id = 0;
-            
+            var currentNode = new ListNode();
+            var head = currentNode;
+
             try
             {
                 ListNodeDto nodeDto;
-
                 while ((nodeDto = Serializer.DeserializeWithLengthPrefix<ListNodeDto>(stream, PrefixStyle.Base128, 1)) != null)
                 {
-                    var listNode = new ListNode {Data = nodeDto.Data};
+                    var nextNode = new ListNode();
+                    
+                    currentNode.Data = nodeDto.Data;
+                    currentNode.Next = nextNode;
+                    nextNode.Previous = currentNode;
                     randomNodeIndexes.Add(nodeDto.Random);
-                    listNodes[id] = listNode;
-                    id++;
+                    
+                    listNodes.Add(currentNode);
+                    currentNode = nextNode;
                 }
+
+                listNodes[^1].Next = null;
             }
             catch (Exception ex)
             {
                 throw new ArgumentException("Stream contains invalid data", ex);
             }
 
-            var lastIndex = randomNodeIndexes.Count - 1;
-
-            listNodes[0].Random = randomNodeIndexes[0] == -1 ? null : listNodes[randomNodeIndexes[0]];
-
-            //If there is single node - work is done, just return it
-            if (lastIndex == 0) return listNodes[0];
-            
-            //First node has no previous 
-            listNodes[0].Next = listNodes[1];
-
-            for (int i = 1; i < lastIndex; i++)
+            for (int i = 0; i < listNodes.Count; i++)
             {
                 var randomNodeIndex = randomNodeIndexes[i];
-                listNodes[i].Next = listNodes[i + 1];
-                listNodes[i].Previous = listNodes[i - 1];
                 listNodes[i].Random = randomNodeIndex == -1 ? null : listNodes[randomNodeIndex];
             }
-
-            //Last node has no next
-            listNodes[lastIndex].Previous = listNodes[lastIndex - 1];
-            listNodes[lastIndex].Random = randomNodeIndexes[lastIndex] == -1 ? null : listNodes[randomNodeIndexes[lastIndex]];
-
-            return listNodes[0];
+            
+            return head;
         }
     }
 }
